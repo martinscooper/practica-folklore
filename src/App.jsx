@@ -169,7 +169,7 @@ function App() {
   const [score, setScore] = useState([]);
   const [intervalIds, setIntervalIds] = useState([]);
   const [playing, setPlaying] = useState(false);
-  const [barCount, setBarCount] = useState(16);
+  const [barCount, setBarCount] = useState(8);
   const [preCount, setPreCount] = useState(0);
 
   const selectRandomBars = useCallback(() => {
