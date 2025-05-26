@@ -5,8 +5,6 @@ import {
   StaveNote,
   Formatter,
   Beam,
-  Voice,
-  System,
 } from "vexflow";
 import IconButton from "@mui/material/IconButton";
 import VolumeUpIcon from "@mui/icons-material/VolumeUp";
@@ -162,7 +160,7 @@ const selectRandomBar = () => {
 };
 
 const Accordion = ({ title, children }) => {
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(true);
 
   return (
     <div className="border rounded-md mb-4">
