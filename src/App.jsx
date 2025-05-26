@@ -120,8 +120,8 @@ function generateRandomBar() {
   return notes;
 }
 
+const context = new (window.AudioContext || window.webkitAudioContext)();
 function playClick(isBarFirstClick) {
-  const context = new (window.AudioContext || window.webkitAudioContext)();
   const oscillator = context.createOscillator();
   const gainNode = context.createGain();
 
