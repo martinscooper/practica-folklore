@@ -195,7 +195,7 @@ function App() {
   const [score, setScore] = useState([]);
   const [intervalIds, setIntervalIds] = useState([]);
   const [playing, setPlaying] = useState(false);
-  const [barCount, setBarCount] = useState(16);
+  const [barCount, setBarCount] = useState(8);
   const [preCount, setPreCount] = useState(0);
   const [tempo, setTempo] = useState(100);
   const [barIndex, setBarIndex] = useState(-2);
@@ -235,8 +235,8 @@ function App() {
     const renderer = new Renderer(containerRef.current, Renderer.Backends.SVG);
     const context = renderer.getContext();
 
-    const barsPerSystem = 4;
-    const barWidth = 220;
+    const barsPerSystem = 2;
+    const barWidth = 440;
     const systemWidth = barWidth * barsPerSystem;
     const systemHeight = 120;
     const startX = 10;
