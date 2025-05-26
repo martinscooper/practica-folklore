@@ -286,7 +286,7 @@ function App() {
         {playing && (
           <button
             onClick={onStop}
-            className="px-5 py-2 bg-red-500 text-white font-semibold rounded-lg shadow-md hover:bg-red-600 transition duration-200"
+            className="px-5 py-2 bg-white text-red-500 outline outline-2 outline-red-500 font-semibold rounded-lg shadow-md hover:bg-red-600 transition duration-200"
           >
             Detener
           </button>
