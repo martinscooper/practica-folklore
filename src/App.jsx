@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import {
   Renderer,
   Stave,
@@ -8,14 +8,14 @@ import {
   Voice,
   System,
 } from "vexflow";
+import IconButton from "@mui/material/IconButton";
+import VolumeUpIcon from "@mui/icons-material/VolumeUp";
+import VolumeOffIcon from "@mui/icons-material/VolumeOff";
 
 const g = ["b/4"];
 const e = ["e/4"];
 const rest = ["g/4"];
-const tempo = 120;
 const beatsPerBar = 3; // Number of beats in a bar (e.g., 4 for 4/4 time)
-const secondsPerBeat = 60 / tempo;
-const barDuration = secondsPerBeat * beatsPerBar * 1000; // Duration in milliseconds
 
 const options = [
   // base
@@ -103,24 +103,28 @@ const options = [
     [e, "8"],
     [g, "8"],
   ],
+  [
+    [rest, "8"],
+    [g, "8"],
+    [e, "4"],
+    [e, "4"],
+  ],
+
+  // repiqueteo
+  // [
+  //   [g, "16"],
+  //   [e, "16"],
+  //   [e, "8"],
+  //   [e, "8"],
+  //   [g, "4"],
+  //   [rest, "8"],
+  // ],
 ];
 
-function generateRandomBar() {
-  const notes = [];
-  let beats = 0;
-  while (beats < 4) {
-    if (4 - beats >= 1 && Math.random() > 0.5) {
-      notes.push({ keys: ["g/4"], duration: "q" }); // quarter note
-      beats += 1;
-    } else if (4 - beats >= 0.5) {
-      notes.push({ keys: ["g/4"], duration: "8" }); // eighth note
-      beats += 0.5;
-    }
-  }
-  return notes;
-}
-
 const context = new (window.AudioContext || window.webkitAudioContext)();
+const masterGain = context.createGain();
+masterGain.connect(context.destination);
+
 function playClick(isBarFirstClick) {
   const oscillator = context.createOscillator();
   const gainNode = context.createGain();
@@ -134,18 +138,11 @@ function playClick(isBarFirstClick) {
   gainNode.gain.exponentialRampToValueAtTime(0.001, context.currentTime + 0.05); // Quick fade out
 
   oscillator.connect(gainNode);
-  gainNode.connect(context.destination);
+  gainNode.connect(masterGain);
 
   oscillator.start();
   oscillator.stop(context.currentTime + 0.05); // Shorter duration
 }
-
-const playMethronomeBar = () => {
-  const interval = (60 / tempo) * 1000; // Interval in milliseconds
-  playClick(true);
-  setTimeout(() => playClick(false), interval);
-  setTimeout(() => playClick(false), interval * 2);
-};
 
 const processNote = (note) => {
   const result = {
@@ -164,13 +161,65 @@ const selectRandomBar = () => {
   );
 };
 
+const Accordion = ({ title, children }) => {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <div className="border rounded-md mb-4">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full px-4 py-2 text-left bg-gray-200 hover:bg-gray-300 transition duration-300 flex justify-between items-center"
+      >
+        <span className="font-semibold">{title}</span>
+        <svg
+          className={`w-5 h-5 transform transition-transform duration-300 ${
+            isOpen ? "rotate-180" : "rotate-0"
+          }`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M19 9l-7 7-7-7"
+          />
+        </svg>
+      </button>
+      {isOpen && <div className="p-4 bg-white">{children}</div>}
+    </div>
+  );
+};
+
 function App() {
   const containerRef = useRef(null);
   const [score, setScore] = useState([]);
   const [intervalIds, setIntervalIds] = useState([]);
   const [playing, setPlaying] = useState(false);
-  const [barCount, setBarCount] = useState(8);
+  const [barCount, setBarCount] = useState(16);
   const [preCount, setPreCount] = useState(0);
+  const [tempo, setTempo] = useState(100);
+  const [barIndex, setBarIndex] = useState(-2);
+  const [isMuted, setIsMuted] = useState(false);
+
+  const toggleMute = () => {
+    setIsMuted((prev) => {
+      const newMutedState = !prev;
+      masterGain.gain.setValueAtTime(
+        newMutedState ? 0 : 1,
+        context.currentTime
+      );
+      return newMutedState;
+    });
+  };
+
+  const secondsPerBeat = useMemo(() => 60 / tempo, [tempo]);
+  const barDuration = secondsPerBeat * beatsPerBar * 1000; // Duration in milliseconds
+  const millisecondsPerBeat = useMemo(
+    () => secondsPerBeat * 1000,
+    [secondsPerBeat]
+  );
 
   const selectRandomBars = useCallback(() => {
     setScore(new Array(barCount).fill(null).map(selectRandomBar));
@@ -191,20 +240,21 @@ function App() {
     const barsPerSystem = 4;
     const barWidth = 220;
     const systemWidth = barWidth * barsPerSystem;
-    const systemHeight = 120; // Height between systems
+    const systemHeight = 120;
     const startX = 10;
     const startY = 40;
 
     const totalSystems = Math.ceil(score.length / barsPerSystem);
     const svgHeight = startY + totalSystems * systemHeight;
     renderer.resize(systemWidth + startX * 2, svgHeight);
-
     score.forEach((barNotes, i) => {
       const systemIndex = Math.floor(i / barsPerSystem);
       const barIndexInSystem = i % barsPerSystem;
 
       const x = startX + barIndexInSystem * barWidth;
       const y = startY + systemIndex * systemHeight;
+      const isCurrent = i === barIndex;
+      const noteColor = isCurrent || !playing ? "#000000" : "#696262";
 
       let stave;
       if (barIndexInSystem === 0) {
@@ -225,48 +275,68 @@ function App() {
       }
       stave.setContext(context).draw();
 
-      const notes = barNotes.map((n) => new StaveNote(n));
+      let notes = barNotes.map((n) => new StaveNote(n));
+      notes = notes.map((n) =>
+        n.setStyle({ fillStyle: noteColor, strokeStyle: noteColor })
+      );
       const beams = Beam.generateBeams(notes);
       Formatter.FormatAndDraw(context, stave, notes);
       beams.forEach((b) => {
-        b.setContext(context).draw();
+        b.setStyle({ fillStyle: noteColor, strokeStyle: noteColor });
+        b.setContext(context).drawWithStyle();
       });
     });
-  }, [score]);
+  }, [barIndex, playing, score, tempo]);
+
+  const playMethronomeBar = useCallback(() => {
+    playClick(true);
+    setBarIndex((prev) => (prev + 1) % barCount);
+    setTimeout(() => playClick(false), millisecondsPerBeat);
+    setTimeout(() => playClick(false), millisecondsPerBeat * 2);
+  }, [barCount, millisecondsPerBeat]);
 
   const onStart = useCallback(() => {
-    let regenerateId;
-    setTimeout(() => {
-      regenerateId = setInterval(selectRandomBars, barDuration * barCount);
-      setIntervalIds((prev) => [...prev, regenerateId]);
-    }, barDuration);
+    // let regenerateId;
+    // setTimeout(() => {
+    //   regenerateId = setInterval(selectRandomBars, barDuration * barCount);
+    //   setIntervalIds((prev) => [...prev, regenerateId]);
+    // }, barDuration);
 
-    const interval = (60 / tempo) * 1000; // Interval in milliseconds
     setPreCount(1);
     playMethronomeBar();
-    const methronomeId = setInterval(playMethronomeBar, interval * beatsPerBar);
+    const methronomeId = setInterval(
+      playMethronomeBar,
+      millisecondsPerBeat * beatsPerBar
+    );
     setIntervalIds((prev) => [...prev, methronomeId]);
     setPlaying(true);
-  }, [barCount, selectRandomBars]);
+  }, [
+    barCount,
+    barDuration,
+    millisecondsPerBeat,
+    playMethronomeBar,
+    selectRandomBars,
+  ]);
 
   const onStop = useCallback(() => {
     intervalIds.forEach((x) => clearInterval(x));
+    setBarIndex(-2);
     setPlaying(false);
     setIntervalIds([]);
+    setIsMuted(false);
   }, [intervalIds]);
 
   useEffect(() => {
-    const interval = (60 / tempo) * 1000; // Interval in milliseconds
     if (preCount) {
       if (preCount > beatsPerBar) {
         setPreCount("");
       } else {
         setTimeout(() => {
           setPreCount((prev) => prev + 1);
-        }, interval);
+        }, millisecondsPerBeat);
       }
     }
-  }, [preCount]);
+  }, [millisecondsPerBeat, preCount, tempo]);
 
   return (
     <div className="flex flex-col items-center mt-10 space-y-6">
@@ -278,7 +348,7 @@ function App() {
         {!playing && (
           <button
             onClick={onStart}
-            className="px-5 py-2 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 transition duration-200"
+            className="px-5 py-2 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-700 transition duration-200"
           >
             Iniciar
           </button>
@@ -286,7 +356,7 @@ function App() {
         {playing && (
           <button
             onClick={onStop}
-            className="px-5 py-2 bg-white text-red-500 outline outline-2 outline-red-500 font-semibold rounded-lg shadow-md hover:bg-red-600 transition duration-200"
+            className="px-5 py-2 bg-white text-red-500 outline outline-2 outline-red-500 font-semibold rounded-lg shadow-md hover:bg-red-50 transition duration-200"
           >
             Detener
           </button>
@@ -298,6 +368,15 @@ function App() {
           >
             Generar Nuevo
           </button>
+        )}
+        {playing && (
+          <IconButton
+            onClick={toggleMute}
+            aria-label={isMuted ? "Activar sonido" : "Silenciar"}
+            sx={{ color: "#000000" }} // Establece el color a negro
+          >
+            {isMuted ? <VolumeOffIcon /> : <VolumeUpIcon />}
+          </IconButton>
         )}
       </div>
 
@@ -313,6 +392,49 @@ function App() {
       )}
 
       <div ref={containerRef} className="mt-6 w-full max-w-4xl"></div>
+
+      {!playing && (
+        <div className="mt-8 w-full max-w-4xl px-4">
+          <Accordion title="⚙️ Configuración">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+              <div>
+                <label
+                  htmlFor="tempo"
+                  className="block text-sm font-medium text-gray-700"
+                >
+                  Tempo (BPM)
+                </label>
+                <input
+                  type="number"
+                  id="tempo"
+                  min="40"
+                  max="240"
+                  value={tempo}
+                  onChange={(e) => setTempo(Number(e.target.value))}
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label
+                  htmlFor="bars"
+                  className="block text-sm font-medium text-gray-700"
+                >
+                  Cantidad de compases
+                </label>
+                <input
+                  type="number"
+                  id="bars"
+                  min="1"
+                  max="32"
+                  value={barCount}
+                  onChange={(e) => setBarCount(Number(e.target.value))}
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+            </div>
+          </Accordion>
+        </div>
+      )}
     </div>
   );
 }
