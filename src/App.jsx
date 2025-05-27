@@ -1,123 +1,10 @@
 import { useCallback, useEffect, useRef, useState, useMemo } from "react";
-import {
-  Renderer,
-  Stave,
-  StaveNote,
-  Formatter,
-  Beam,
-} from "vexflow";
+import { Renderer, Stave, StaveNote, Formatter, Beam } from "vexflow";
 import IconButton from "@mui/material/IconButton";
 import VolumeUpIcon from "@mui/icons-material/VolumeUp";
 import VolumeOffIcon from "@mui/icons-material/VolumeOff";
-
-const g = ["b/4"];
-const e = ["e/4"];
-const rest = ["g/4"];
-const beatsPerBar = 3; // Number of beats in a bar (e.g., 4 for 4/4 time)
-
-const options = [
-  // base
-  [
-    [g, "q"],
-    [e, "8"],
-    [g, "8"],
-    [e, "q"],
-  ],
-  [
-    [g, "q"],
-    [e, "q"],
-    [e, "q"],
-  ],
-  // dos corcheas al ppio
-  [
-    [g, "8"],
-    [g, "8"],
-    [e, "8"],
-    [g, "8"],
-    [e, "q"],
-  ],
-  [
-    [g, "8"],
-    [e, "8"],
-    [e, "8"],
-    [g, "8"],
-    [e, "q"],
-  ],
-  // dos corchear al final
-  [
-    [g, "q"],
-    [e, "8"],
-    [g, "8"],
-    [e, "8"],
-    [e, "8"],
-  ],
-  [
-    [g, "q"],
-    [e, "8"],
-    [g, "8"],
-    [e, "8"],
-    [g, "8"],
-  ],
-  // silencio al ppio
-  [
-    [rest, "8"],
-    [g, "8"],
-    [e, "8"],
-    [g, "8"],
-    [e, "q"],
-  ],
-  [
-    [rest, "8"],
-    [e, "8"],
-    [e, "8"],
-    [g, "8"],
-    [e, "q"],
-  ],
-  // repiqueteo
-  // [
-  //   [g, '16'],
-  //   [e, '16'],
-  //   [e, '16'],
-  //   [e, '16'],
-  //   [e, '8'],
-  //   [e, '8'],
-  //   [g, '8'],
-  //   [e, 'q'],
-  // ]
-
-  // silencio al final
-  // [
-  //   [g, 'q'],
-  //   [e, '8'],
-  //   [g, '8'],
-  //   [e, '8'],
-  //   [rest, '8'],
-  // ],
-
-  // variaciones
-  [
-    [g, "4"],
-    [e, "4"],
-    [e, "8"],
-    [g, "8"],
-  ],
-  [
-    [rest, "8"],
-    [g, "8"],
-    [e, "4"],
-    [e, "4"],
-  ],
-
-  // repiqueteo
-  // [
-  //   [g, "16"],
-  //   [e, "16"],
-  //   [e, "8"],
-  //   [e, "8"],
-  //   [g, "4"],
-  //   [rest, "8"],
-  // ],
-];
+import { useOptions } from "./useOptions";
+import { getToggleButtonGroupUtilityClass } from "@mui/material";
 
 const context = new (window.AudioContext || window.webkitAudioContext)();
 const masterGain = context.createGain();
@@ -141,23 +28,6 @@ function playClick(isBarFirstClick) {
   oscillator.start();
   oscillator.stop(context.currentTime + 0.05); // Shorter duration
 }
-
-const processNote = (note) => {
-  const result = {
-    keys: note[0],
-    duration: note[1],
-  };
-  if (result.keys == rest) {
-    result["type"] = "r";
-  }
-  return result;
-};
-
-const selectRandomBar = () => {
-  return options[Math.floor(Math.random() * options.length)].map((note) =>
-    processNote(note)
-  );
-};
 
 const Accordion = ({ title, children }) => {
   const [isOpen, setIsOpen] = useState(true);
@@ -192,14 +62,20 @@ const Accordion = ({ title, children }) => {
 
 function App() {
   const containerRef = useRef(null);
+  const hintContainerRef = useRef(null);
   const [score, setScore] = useState([]);
   const [intervalIds, setIntervalIds] = useState([]);
   const [playing, setPlaying] = useState(false);
-  const [barCount, setBarCount] = useState(8);
+  const [barCount, setBarCount] = useState(4);
+  const [barsPerSystem, setbBarsPerSystem] = useState(2);
   const [preCount, setPreCount] = useState(0);
-  const [tempo, setTempo] = useState(100);
-  const [barIndex, setBarIndex] = useState(-2);
+  const [tempo, setTempo] = useState(120);
+  const [barIndex, setBarIndex] = useState(-1);
   const [isMuted, setIsMuted] = useState(false);
+  const [firstNextBar, setFirstNextBar] = useState(null);
+  const [regenerateOnFinish, setRegenerateOnFinish] = useState(false);
+
+  const { options, rest } = useOptions();
 
   const toggleMute = () => {
     setIsMuted((prev) => {
@@ -212,22 +88,54 @@ function App() {
     });
   };
 
+  const beatsPerBar = useMemo(() => 3, []);
+
   const secondsPerBeat = useMemo(() => 60 / tempo, [tempo]);
-  const barDuration = secondsPerBeat * beatsPerBar * 1000; // Duration in milliseconds
+
   const millisecondsPerBeat = useMemo(
     () => secondsPerBeat * 1000,
     [secondsPerBeat]
   );
 
+  const millisecondsPerBar = useMemo(
+    () => millisecondsPerBeat * beatsPerBar,
+    [beatsPerBar, millisecondsPerBeat]
+  );
+
+  const totalMilliseconds = useMemo(
+    () => millisecondsPerBar * barCount,
+    [barCount, millisecondsPerBar]
+  );
+
+  const processNote = useCallback(
+    (note) => {
+      const result = {
+        keys: note[0],
+        duration: note[1],
+      };
+      if (result.keys == rest) {
+        result["type"] = "r";
+      }
+      return result;
+    },
+    [rest]
+  );
+
+  const selectRandomBar = useCallback(() => {
+    return options[Math.floor(Math.random() * options.length)].map((note) =>
+      processNote(note)
+    );
+  }, [options, processNote]);
+
   const selectRandomBars = useCallback(() => {
     setScore(new Array(barCount).fill(null).map(selectRandomBar));
-  }, [barCount]);
+  }, [barCount, selectRandomBar]);
 
   useEffect(() => {
-    selectRandomBars();
-  }, [selectRandomBars]);
+    setScore(new Array(barCount).fill(null).map(selectRandomBar));
+  }, [barCount, selectRandomBar]);
 
-  useEffect(() => {
+  const paint = useCallback(() => {
     if (!containerRef.current || score.length === 0) return;
 
     containerRef.current.innerHTML = ""; // Clear previous rendering
@@ -235,9 +143,9 @@ function App() {
     const renderer = new Renderer(containerRef.current, Renderer.Backends.SVG);
     const context = renderer.getContext();
 
-    const barsPerSystem = 2;
-    const barWidth = 440;
-    const systemWidth = barWidth * barsPerSystem;
+    // Calculate the desired system width as 80% of the viewport width
+    const systemWidth = containerRef.current.offsetWidth;
+    const barWidth = systemWidth / barsPerSystem;
     const systemHeight = 120;
     const startX = 10;
     const startY = 40;
@@ -284,44 +192,115 @@ function App() {
         b.setContext(context).drawWithStyle();
       });
     });
-  }, [barIndex, playing, score, tempo]);
+  }, [barIndex, barsPerSystem, playing, score, tempo]);
+
+  const paintHint = useCallback(() => {
+    if (!hintContainerRef.current || firstNextBar === null) return;
+
+    hintContainerRef.current.innerHTML = ""; // Clear previous rendering
+
+    const renderer = new Renderer(
+      hintContainerRef.current,
+      Renderer.Backends.SVG
+    );
+    const context = renderer.getContext();
+
+    // Calculate the desired system width as 80% of the viewport width
+    const systemWidth = hintContainerRef.current.offsetWidth;
+    const barWidth = systemWidth / barsPerSystem;
+    const systemHeight = 120;
+    const startX = 10;
+    const startY = 40;
+
+    const totalSystems = 1;
+    const svgHeight = startY + totalSystems * systemHeight;
+    renderer.resize(systemWidth + startX * 2, svgHeight);
+    const systemIndex = 0;
+    const barIndexInSystem = 0;
+
+    const x = startX + barIndexInSystem * barWidth;
+    const y = startY + systemIndex * systemHeight;
+    const noteColor = "#696262";
+
+    let stave;
+    stave = new Stave(x, y, barWidth);
+    stave.setContext(context).draw();
+
+    let notes = firstNextBar.map((n) => new StaveNote(n));
+    notes = notes.map((n) =>
+      n.setStyle({ fillStyle: noteColor, strokeStyle: noteColor })
+    );
+    const beams = Beam.generateBeams(notes);
+    Formatter.FormatAndDraw(context, stave, notes);
+    beams.forEach((b) => {
+      b.setStyle({ fillStyle: noteColor, strokeStyle: noteColor });
+      b.setContext(context).drawWithStyle();
+    });
+  }, [barsPerSystem, firstNextBar]);
+
+  const update = useCallback(() => {
+    setBarIndex((prevBarIndex) => {
+      const newBarIndex = (prevBarIndex + 1) % barCount;
+      return newBarIndex;
+    });
+  }, [barCount]);
+
+  useEffect(() => {
+    setFirstNextBar((prevFirstNextBar) => {
+      const leftBars = barCount - barIndex;
+      console.log("leftBars", leftBars);
+
+      let newFirstNextBar = prevFirstNextBar;
+
+      if (regenerateOnFinish && leftBars === 1 && !prevFirstNextBar) {
+        newFirstNextBar = selectRandomBar();
+      } else if (barIndex === 1) {
+        newFirstNextBar = null;
+      }
+      return newFirstNextBar;
+    });
+  }, [barCount, barIndex, regenerateOnFinish, selectRandomBar]);
+
+  useEffect(() => {
+    if (regenerateOnFinish && barIndex === 0) {
+      const newScore = new Array(barCount).fill(null).map(selectRandomBar);
+      if (firstNextBar !== null) {
+        newScore[0] = firstNextBar;
+      }
+      setScore(newScore);
+    }
+  }, [barCount, barIndex, firstNextBar, regenerateOnFinish, selectRandomBar]);
+
+  useEffect(paint, [paint, score]);
+  useEffect(() => {
+    paintHint();
+  }, [paintHint, firstNextBar]);
 
   const playMethronomeBar = useCallback(() => {
     playClick(true);
-    setBarIndex((prev) => (prev + 1) % barCount);
     setTimeout(() => playClick(false), millisecondsPerBeat);
     setTimeout(() => playClick(false), millisecondsPerBeat * 2);
-  }, [barCount, millisecondsPerBeat]);
+  }, [millisecondsPerBeat]);
 
   const onStart = useCallback(() => {
-    // let regenerateId;
-    // setTimeout(() => {
-    //   regenerateId = setInterval(selectRandomBars, barDuration * barCount);
-    //   setIntervalIds((prev) => [...prev, regenerateId]);
-    // }, barDuration);
+    let regenerateId;
+    regenerateId = setInterval(() => update(), millisecondsPerBar);
+    setIntervalIds((prev) => [...prev, regenerateId]);
 
     setPreCount(1);
     playMethronomeBar();
-    const methronomeId = setInterval(
-      playMethronomeBar,
-      millisecondsPerBeat * beatsPerBar
-    );
+    const methronomeId = setInterval(playMethronomeBar, millisecondsPerBar);
     setIntervalIds((prev) => [...prev, methronomeId]);
     setPlaying(true);
-  }, [
-    barCount,
-    barDuration,
-    millisecondsPerBeat,
-    playMethronomeBar,
-    selectRandomBars,
-  ]);
+  }, [millisecondsPerBar, playMethronomeBar, update]);
 
   const onStop = useCallback(() => {
     intervalIds.forEach((x) => clearInterval(x));
-    setBarIndex(-2);
+    setBarIndex(-1);
     setPlaying(false);
     setIntervalIds([]);
     setIsMuted(false);
+    setFirstNextBar(null);
   }, [intervalIds]);
 
   useEffect(() => {
@@ -334,7 +313,7 @@ function App() {
         }, millisecondsPerBeat);
       }
     }
-  }, [millisecondsPerBeat, preCount, tempo]);
+  }, [beatsPerBar, millisecondsPerBeat, preCount, tempo]);
 
   return (
     <div className="flex flex-col items-center mt-10 space-y-6">
@@ -389,8 +368,16 @@ function App() {
         </div>
       )}
 
-      <div ref={containerRef} className="mt-6 w-full max-w-4xl"></div>
-
+      <div
+        ref={containerRef}
+        className="mt-2 w-full max-w-7xl mx-auto px-4"
+      ></div>
+      {firstNextBar && barCount - barIndex === 1 && (
+        <section className="mt-6 w-full max-w-7xl px-4 mx-auto">
+          <h2 className="text-lg font-semibold text-gray-700">Siguiente:</h2>
+          <div ref={hintContainerRef}></div>
+        </section>
+      )}
       {!playing && (
         <div className="mt-8 w-full max-w-4xl px-4">
           <Accordion title="⚙️ Configuración">
@@ -428,6 +415,38 @@ function App() {
                   onChange={(e) => setBarCount(Number(e.target.value))}
                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                 />
+              </div>
+              <div>
+                <label
+                  htmlFor="bars"
+                  className="block text-sm font-medium text-gray-700"
+                >
+                  Compases por sistema
+                </label>
+                <input
+                  type="number"
+                  id="bars-per-system"
+                  min="1"
+                  max="8"
+                  value={barsPerSystem}
+                  onChange={(e) => setbBarsPerSystem(Number(e.target.value))}
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div className="flex items-center">
+                <input
+                  id="regenerate-on-finish"
+                  type="checkbox"
+                  checked={regenerateOnFinish}
+                  onChange={(e) => setRegenerateOnFinish(e.target.checked)}
+                  className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                />
+                <label
+                  htmlFor="regenerate-on-finish"
+                  className="ml-2 block text-sm text-gray-700"
+                >
+                  Regenerar al finalizar
+                </label>
               </div>
             </div>
           </Accordion>
