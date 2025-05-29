@@ -4,7 +4,6 @@ import IconButton from "@mui/material/IconButton";
 import VolumeUpIcon from "@mui/icons-material/VolumeUp";
 import VolumeOffIcon from "@mui/icons-material/VolumeOff";
 import { useOptions } from "./useOptions";
-import { getToggleButtonGroupUtilityClass } from "@mui/material";
 
 const context = new (window.AudioContext || window.webkitAudioContext)();
 const masterGain = context.createGain();
@@ -102,10 +101,10 @@ function App() {
     [beatsPerBar, millisecondsPerBeat]
   );
 
-  const totalMilliseconds = useMemo(
-    () => millisecondsPerBar * barCount,
-    [barCount, millisecondsPerBar]
-  );
+  // const totalMilliseconds = useMemo(
+  //   () => millisecondsPerBar * barCount,
+  //   [barCount, millisecondsPerBar]
+  // );
 
   const processNote = useCallback(
     (note) => {
