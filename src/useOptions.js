@@ -4,7 +4,7 @@ export const useOptions = () => {
   const g = useMemo(() => ["e/5"], []);
   const e = useMemo(() => ["e/4"], []);
   const rest = useMemo(() => ["g/4"], []);
-
+  const triplet = useMemo(() => "triplet", []);
   const options = useMemo(
     () => [
       // base
@@ -65,16 +65,22 @@ export const useOptions = () => {
         [e, "q"],
       ],
       // repiqueteo
+      [[g, "8"], [e, "8"], [e, "8"], triplet, [e, "8"], [g, "8"], [e, "q"]],
+      [[g, "8"], [g, "8"], [e, "8"], triplet, [e, "8"], [g, "8"], [e, "q"]],
       // [
-      //   [g, '16'],
-      //   [e, '16'],
-      //   [e, '16'],
-      //   [e, '16'],
-      //   [e, '8'],
-      //   [e, '8'],
-      //   [g, '8'],
-      //   [e, 'q'],
-      // ]
+      //   [g, "8"],
+      //   [g, "8"],
+      //   [e, "8"],
+      //   triplet,
+      //   [e, "8"],
+      //   [g, "8"],
+      //   [rest, "8"],
+      //   [e, "8"],
+      //   [e, "4"],
+      //   [e, "8"],
+      //   [g, "8"],
+      //   [e, "4"],
+      // ],
 
       // silencio al final
       // [
@@ -109,8 +115,8 @@ export const useOptions = () => {
       //   [rest, "8"],
       // ],
     ],
-    [e, g, rest]
+    [e, g, rest, triplet]
   );
 
-  return { options, e, g, rest };
+  return { options, e, g, rest, triplet };
 };

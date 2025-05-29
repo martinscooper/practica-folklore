@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, useMemo } from "react";
-import { Renderer, Stave, StaveNote, Formatter, Beam } from "vexflow";
+import { Renderer, Stave, StaveNote, Formatter, Beam, Tuplet } from "vexflow";
 import IconButton from "@mui/material/IconButton";
 import VolumeUpIcon from "@mui/icons-material/VolumeUp";
 import VolumeOffIcon from "@mui/icons-material/VolumeOff";
@@ -68,13 +68,13 @@ function App() {
   const [barCount, setBarCount] = useState(4);
   const [barsPerSystem, setbBarsPerSystem] = useState(2);
   const [preCount, setPreCount] = useState(0);
-  const [tempo, setTempo] = useState(120);
+  const [tempo, setTempo] = useState(100);
   const [barIndex, setBarIndex] = useState(-1);
   const [isMuted, setIsMuted] = useState(false);
   const [firstNextBar, setFirstNextBar] = useState(null);
   const [regenerateOnFinish, setRegenerateOnFinish] = useState(false);
 
-  const { options, rest } = useOptions();
+  const { options, rest, triplet } = useOptions();
 
   const toggleMute = () => {
     setIsMuted((prev) => {
@@ -108,6 +108,7 @@ function App() {
 
   const processNote = useCallback(
     (note) => {
+      if (note === triplet) return triplet;
       const result = {
         keys: note[0],
         duration: note[1],
@@ -117,7 +118,7 @@ function App() {
       }
       return result;
     },
-    [rest]
+    [rest, triplet]
   );
 
   const selectRandomBar = useCallback(() => {
@@ -134,25 +135,17 @@ function App() {
     setScore(new Array(barCount).fill(null).map(selectRandomBar));
   }, [barCount, selectRandomBar]);
 
-  const paint = useCallback(() => {
-    if (!containerRef.current || score.length === 0) return;
-
-    containerRef.current.innerHTML = ""; // Clear previous rendering
-
-    const renderer = new Renderer(containerRef.current, Renderer.Backends.SVG);
-    const context = renderer.getContext();
-
-    // Calculate the desired system width as 80% of the viewport width
-    const systemWidth = containerRef.current.offsetWidth;
-    const barWidth = systemWidth / barsPerSystem;
-    const systemHeight = 120;
-    const startX = 10;
-    const startY = 40;
-
-    const totalSystems = Math.ceil(score.length / barsPerSystem);
-    const svgHeight = startY + totalSystems * systemHeight;
-    renderer.resize(systemWidth + startX * 2, svgHeight);
-    score.forEach((barNotes, i) => {
+  const paintBar = useCallback(
+    (
+      barNotes,
+      context,
+      startX,
+      startY,
+      barWidth,
+      systemHeight,
+      i,
+      drawTempo
+    ) => {
       const systemIndex = Math.floor(i / barsPerSystem);
       const barIndexInSystem = i % barsPerSystem;
 
@@ -165,22 +158,37 @@ function App() {
       if (barIndexInSystem === 0) {
         stave = new Stave(x, y, barWidth);
         if (i === 0) {
-          stave.setTempo(
-            {
-              duration: "q",
-              dots: 0,
-              bpm: tempo,
-            },
-            -20
-          );
-          stave.addClef("treble").addTimeSignature("3/4");
+          if (drawTempo) {
+            stave.setTempo(
+              {
+                duration: "q",
+                dots: 0,
+                bpm: tempo,
+              },
+              -20
+            );
+            stave.addClef("treble").addTimeSignature("3/4");
+          }
         }
       } else {
         stave = new Stave(x, y, barWidth);
       }
       stave.setContext(context).draw();
 
-      let notes = barNotes.map((n) => new StaveNote(n));
+      let notes = barNotes.map((n) =>
+        n === triplet ? triplet : new StaveNote(n)
+      );
+      let triplets = [];
+      if (notes.includes(triplet)) {
+        notes.forEach((n, i) => {
+          if (n === triplet) {
+            console.log(notes.slice(i - 3, i));
+            triplets.push(notes.slice(i - 3, i));
+          }
+        });
+        notes = notes.filter((n) => n !== triplet);
+        triplets = triplets.map((t) => new Tuplet(t));
+      }
       notes = notes.map((n) =>
         n.setStyle({ fillStyle: noteColor, strokeStyle: noteColor })
       );
@@ -190,8 +198,43 @@ function App() {
         b.setStyle({ fillStyle: noteColor, strokeStyle: noteColor });
         b.setContext(context).drawWithStyle();
       });
+
+      triplets.forEach((t) => t.setContext(context).draw());
+    },
+    [barIndex, barsPerSystem, playing, tempo, triplet]
+  );
+
+  const paint = useCallback(() => {
+    if (!containerRef.current || score.length === 0) return;
+
+    containerRef.current.innerHTML = ""; // Clear previous rendering
+
+    const renderer = new Renderer(containerRef.current, Renderer.Backends.SVG);
+    const context = renderer.getContext();
+
+    // Calculate the desired system width as 80% of the viewport width
+    const systemWidth = containerRef.current.offsetWidth;
+    const barWidth = systemWidth / barsPerSystem;
+    const systemHeight = 140;
+    const startX = 10;
+    const startY = 40;
+
+    const totalSystems = Math.ceil(score.length / barsPerSystem);
+    const svgHeight = startY + totalSystems * systemHeight;
+    renderer.resize(systemWidth + startX * 2, svgHeight);
+    score.forEach((barNotes, i) => {
+      paintBar(
+        barNotes,
+        context,
+        startX,
+        startY,
+        barWidth,
+        systemHeight,
+        i,
+        true
+      );
     });
-  }, [barIndex, barsPerSystem, playing, score, tempo]);
+  }, [barsPerSystem, paintBar, score]);
 
   const paintHint = useCallback(() => {
     if (!hintContainerRef.current || firstNextBar === null) return;
@@ -214,28 +257,33 @@ function App() {
     const totalSystems = 1;
     const svgHeight = startY + totalSystems * systemHeight;
     renderer.resize(systemWidth + startX * 2, svgHeight);
-    const systemIndex = 0;
-    const barIndexInSystem = 0;
 
-    const x = startX + barIndexInSystem * barWidth;
-    const y = startY + systemIndex * systemHeight;
-    const noteColor = "#696262";
-
-    let stave;
-    stave = new Stave(x, y, barWidth);
-    stave.setContext(context).draw();
-
-    let notes = firstNextBar.map((n) => new StaveNote(n));
-    notes = notes.map((n) =>
-      n.setStyle({ fillStyle: noteColor, strokeStyle: noteColor })
+    paintBar(
+      firstNextBar,
+      context,
+      startX,
+      startY,
+      barWidth,
+      systemHeight,
+      0,
+      false
     );
-    const beams = Beam.generateBeams(notes);
-    Formatter.FormatAndDraw(context, stave, notes);
-    beams.forEach((b) => {
-      b.setStyle({ fillStyle: noteColor, strokeStyle: noteColor });
-      b.setContext(context).drawWithStyle();
-    });
-  }, [barsPerSystem, firstNextBar]);
+
+    // let stave;
+    // stave = new Stave(x, y, barWidth);
+    // stave.setContext(context).draw();
+
+    // let notes = firstNextBar.map((n) => new StaveNote(n));
+    // notes = notes.map((n) =>
+    //   n.setStyle({ fillStyle: noteColor, strokeStyle: noteColor })
+    // );
+    // const beams = Beam.generateBeams(notes);
+    // Formatter.FormatAndDraw(context, stave, notes);
+    // beams.forEach((b) => {
+    //   b.setStyle({ fillStyle: noteColor, strokeStyle: noteColor });
+    //   b.setContext(context).drawWithStyle();
+    // });
+  }, [barsPerSystem, firstNextBar, paintBar]);
 
   const update = useCallback(() => {
     setBarIndex((prevBarIndex) => {
@@ -247,7 +295,6 @@ function App() {
   useEffect(() => {
     setFirstNextBar((prevFirstNextBar) => {
       const leftBars = barCount - barIndex;
-      console.log("leftBars", leftBars);
 
       let newFirstNextBar = prevFirstNextBar;
 
