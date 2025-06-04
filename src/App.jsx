@@ -171,19 +171,22 @@ function App() {
 
   const getRandomBars = useCallback(() => {
     let newScore = new Array(barCount).fill(null).map(selectRandomBar);
-    if (config.useEndings) {
-      const ending =
-        preselectedEnding !== null ? preselectedEnding : selectRandomEnding();
+    if (useEndings) {
+      const ending = selectRandomEnding();
+      setPreselectedEnding(ending);
+      if (barIndex >= 0 || !regenerateOnFinish) {
+        newScore[0] = ending[1];
+      }
       newScore[newScore.length - 1] = ending[0];
-      newScore[0] = ending[1];
     }
     return newScore;
   }, [
     barCount,
-    config.useEndings,
-    preselectedEnding,
+    barIndex,
+    regenerateOnFinish,
     selectRandomBar,
     selectRandomEnding,
+    useEndings,
   ]);
 
   const selectRandomBars = useCallback(() => {
@@ -342,10 +345,8 @@ function App() {
       let newFirstNextBar = prevFirstNextBar;
 
       if (regenerateOnFinish && leftBars === 1 && !prevFirstNextBar) {
-        if (useEndings) {
-          setPreselectedEnding(selectRandomEnding());
-          const ending = selectRandomEnding();
-          newFirstNextBar = ending[1];
+        if (useEndings && preselectedEnding !== null) {
+          newFirstNextBar = preselectedEnding[1];
         } else {
           newFirstNextBar = selectRandomBar();
         }
@@ -357,6 +358,7 @@ function App() {
   }, [
     barCount,
     barIndex,
+    preselectedEnding,
     regenerateOnFinish,
     selectRandomBar,
     selectRandomEnding,
