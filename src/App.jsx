@@ -4,6 +4,7 @@ import IconButton from "@mui/material/IconButton";
 import VolumeUpIcon from "@mui/icons-material/VolumeUp";
 import VolumeOffIcon from "@mui/icons-material/VolumeOff";
 import { useOptions } from "./useOptions";
+import { useLocalStorage } from "@uidotdev/usehooks";
 
 const context = new (window.AudioContext || window.webkitAudioContext)();
 const masterGain = context.createGain();
@@ -65,25 +66,49 @@ function App() {
   const [score, setScore] = useState([]);
   const [intervalIds, setIntervalIds] = useState([]);
   const [playing, setPlaying] = useState(false);
-  const [barCount, setBarCount] = useState(4);
-  const [barsPerSystem, setbBarsPerSystem] = useState(2);
   const [preCount, setPreCount] = useState(0);
-  const [tempo, setTempo] = useState(100);
   const [barIndex, setBarIndex] = useState(-1);
-  const [isMuted, setIsMuted] = useState(false);
   const [firstNextBar, setFirstNextBar] = useState(null);
-  const [regenerateOnFinish, setRegenerateOnFinish] = useState(false);
+  const [isFirstBar, setIsFirstBar] = useState(false);
+
+  const defaultConfig = useMemo(
+    () => ({
+      barCount: 8,
+      barsPerSystem: 4,
+      tempo: 100,
+      isMuted: false,
+      regenerateOnFinish: false,
+    }),
+    []
+  );
+
+  const [config, setConfig, _] = useLocalStorage(
+    "practica_karaoke_config",
+    defaultConfig
+  );
+
+  const resetConfig = useCallback(() => {
+    setConfig(defaultConfig);
+  }, [defaultConfig, setConfig]);
+
+  const isConfigValid = useMemo(
+    () => Object.values(config).every((v) => v !== null),
+    [config]
+  );
+
+  const { barCount, barsPerSystem, tempo, isMuted, regenerateOnFinish } =
+    config;
 
   const { options, rest, triplet } = useOptions();
 
   const toggleMute = () => {
-    setIsMuted((prev) => {
+    setConfig((prev) => {
       const newMutedState = !prev;
       masterGain.gain.setValueAtTime(
         newMutedState ? 0 : 1,
         context.currentTime
       );
-      return newMutedState;
+      return { ...prev, isMuted: newMutedState };
     });
   };
 
@@ -182,7 +207,6 @@ function App() {
       if (notes.includes(triplet)) {
         notes.forEach((n, i) => {
           if (n === triplet) {
-            console.log(notes.slice(i - 3, i));
             triplets.push(notes.slice(i - 3, i));
           }
         });
@@ -205,7 +229,7 @@ function App() {
   );
 
   const paint = useCallback(() => {
-    if (!containerRef.current || score.length === 0) return;
+    if (!containerRef.current || score.length === 0 || !isConfigValid) return;
 
     containerRef.current.innerHTML = ""; // Clear previous rendering
 
@@ -234,7 +258,7 @@ function App() {
         true
       );
     });
-  }, [barsPerSystem, paintBar, score]);
+  }, [barsPerSystem, isConfigValid, paintBar, score]);
 
   const paintHint = useCallback(() => {
     if (!hintContainerRef.current || firstNextBar === null) return;
@@ -287,6 +311,7 @@ function App() {
 
   const update = useCallback(() => {
     setBarIndex((prevBarIndex) => {
+      setIsFirstBar(prevBarIndex === -1);
       const newBarIndex = (prevBarIndex + 1) % barCount;
       return newBarIndex;
     });
@@ -308,14 +333,21 @@ function App() {
   }, [barCount, barIndex, regenerateOnFinish, selectRandomBar]);
 
   useEffect(() => {
-    if (regenerateOnFinish && barIndex === 0) {
+    if (regenerateOnFinish && barIndex === 0 && !isFirstBar) {
       const newScore = new Array(barCount).fill(null).map(selectRandomBar);
       if (firstNextBar !== null) {
         newScore[0] = firstNextBar;
       }
       setScore(newScore);
     }
-  }, [barCount, barIndex, firstNextBar, regenerateOnFinish, selectRandomBar]);
+  }, [
+    barCount,
+    barIndex,
+    firstNextBar,
+    isFirstBar,
+    regenerateOnFinish,
+    selectRandomBar,
+  ]);
 
   useEffect(paint, [paint, score]);
   useEffect(() => {
@@ -345,9 +377,9 @@ function App() {
     setBarIndex(-1);
     setPlaying(false);
     setIntervalIds([]);
-    setIsMuted(false);
+    setConfig((prev) => ({ ...prev, isMuted: false }));
     setFirstNextBar(null);
-  }, [intervalIds]);
+  }, [intervalIds, setConfig]);
 
   useEffect(() => {
     if (preCount) {
@@ -441,7 +473,12 @@ function App() {
                   min="40"
                   max="240"
                   value={tempo}
-                  onChange={(e) => setTempo(Number(e.target.value))}
+                  onChange={(e) =>
+                    setConfig((prev) => ({
+                      ...prev,
+                      tempo: Number(e.target.value) || null,
+                    }))
+                  }
                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
@@ -458,7 +495,12 @@ function App() {
                   min="1"
                   max="32"
                   value={barCount}
-                  onChange={(e) => setBarCount(Number(e.target.value))}
+                  onChange={(e) =>
+                    setConfig((prev) => ({
+                      ...prev,
+                      barCount: Number(e.target.value) || null,
+                    }))
+                  }
                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
@@ -475,7 +517,12 @@ function App() {
                   min="1"
                   max="8"
                   value={barsPerSystem}
-                  onChange={(e) => setbBarsPerSystem(Number(e.target.value))}
+                  onChange={(e) =>
+                    setConfig((prev) => ({
+                      ...prev,
+                      barsPerSystem: Number(e.target.value) || null,
+                    }))
+                  }
                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
@@ -484,7 +531,12 @@ function App() {
                   id="regenerate-on-finish"
                   type="checkbox"
                   checked={regenerateOnFinish}
-                  onChange={(e) => setRegenerateOnFinish(e.target.checked)}
+                  onChange={(e) =>
+                    setConfig((prev) => ({
+                      ...prev,
+                      regenerateOnFinish: e.target.checked,
+                    }))
+                  }
                   className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                 />
                 <label
@@ -494,6 +546,12 @@ function App() {
                   Regenerar al finalizar
                 </label>
               </div>
+              <button
+                onClick={resetConfig}
+                className="px-5 py-2 bg-white text-blue-500 font-semibold rounded-lg shadow-md outline outline-2 outline-blue-500 hover:bg-blue-50 transition duration-200"
+              >
+                Resetear configuración
+              </button>
             </div>
           </Accordion>
         </div>
