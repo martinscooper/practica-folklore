@@ -118,5 +118,63 @@ export const useOptions = () => {
     [e, g, rest, triplet]
   );
 
-  return { options, e, g, rest, triplet };
+  const endingOptions = useMemo(
+    () => [
+      [
+        [
+          [g, "8"],
+          [g, "8"],
+          [e, "8"],
+          [g, "8"],
+          [e, "8"],
+          [e, "8"],
+        ],
+        [
+          [e, "4"],
+          [e, "8"],
+          [g, "8"],
+          [e, "4"],
+        ],
+      ],
+      [
+        [
+          [g, "8"],
+          [e, "8"],
+          [e, "8"],
+          triplet,
+          [e, "8"],
+          [g, "8"],
+          [rest, "8"],
+          [e, "8"],
+        ],
+        [
+          [e, "4"],
+          [e, "8"],
+          [g, "8"],
+          [e, "q"],
+        ],
+      ],
+      [
+        [
+          [g, "8"],
+          [g, "8"],
+          [e, "8"],
+          triplet,
+          [e, "8"],
+          [g, "8"],
+          [rest, "8"],
+          [e, "8"],
+        ],
+        [
+          [e, "4"],
+          [e, "8"],
+          [g, "8"],
+          [e, "q"],
+        ],
+      ],
+    ],
+    [e, g, rest, triplet]
+  );
+
+  return { options, endingOptions, e, g, rest, triplet };
 };

@@ -70,6 +70,7 @@ function App() {
   const [barIndex, setBarIndex] = useState(-1);
   const [firstNextBar, setFirstNextBar] = useState(null);
   const [isFirstBar, setIsFirstBar] = useState(false);
+  const [preselectedEnding, setPreselectedEnding] = useState(null);
 
   const defaultConfig = useMemo(
     () => ({
@@ -78,6 +79,7 @@ function App() {
       tempo: 100,
       isMuted: false,
       regenerateOnFinish: false,
+      useEndings: true,
     }),
     []
   );
@@ -96,10 +98,16 @@ function App() {
     [config]
   );
 
-  const { barCount, barsPerSystem, tempo, isMuted, regenerateOnFinish } =
-    config;
+  const {
+    barCount,
+    barsPerSystem,
+    tempo,
+    isMuted,
+    regenerateOnFinish,
+    useEndings,
+  } = config;
 
-  const { options, rest, triplet, g } = useOptions();
+  const { options, endingOptions, rest, triplet, g } = useOptions();
 
   const toggleMute = () => {
     setConfig((prev) => {
@@ -155,13 +163,35 @@ function App() {
     );
   }, [options, processNote]);
 
-  const selectRandomBars = useCallback(() => {
-    setScore(new Array(barCount).fill(null).map(selectRandomBar));
-  }, [barCount, selectRandomBar]);
+  const selectRandomEnding = useCallback(() => {
+    return endingOptions[Math.floor(Math.random() * endingOptions.length)].map(
+      (bar) => bar.map((note) => processNote(note))
+    );
+  }, [endingOptions, processNote]);
 
-  useEffect(() => {
-    setScore(new Array(barCount).fill(null).map(selectRandomBar));
-  }, [barCount, selectRandomBar]);
+  const getRandomBars = useCallback(() => {
+    let newScore = new Array(barCount).fill(null).map(selectRandomBar);
+    if (config.useEndings) {
+      const ending =
+        preselectedEnding !== null ? preselectedEnding : selectRandomEnding();
+      newScore[newScore.length - 1] = ending[0];
+      newScore[0] = ending[1];
+    }
+    return newScore;
+  }, [
+    barCount,
+    config.useEndings,
+    preselectedEnding,
+    selectRandomBar,
+    selectRandomEnding,
+  ]);
+
+  const selectRandomBars = useCallback(() => {
+    setScore(getRandomBars());
+  }, [getRandomBars]);
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(selectRandomBars, []);
 
   const paintBar = useCallback(
     (
@@ -295,21 +325,6 @@ function App() {
       0,
       false
     );
-
-    // let stave;
-    // stave = new Stave(x, y, barWidth);
-    // stave.setContext(context).draw();
-
-    // let notes = firstNextBar.map((n) => new StaveNote(n));
-    // notes = notes.map((n) =>
-    //   n.setStyle({ fillStyle: noteColor, strokeStyle: noteColor })
-    // );
-    // const beams = Beam.generateBeams(notes);
-    // Formatter.FormatAndDraw(context, stave, notes);
-    // beams.forEach((b) => {
-    //   b.setStyle({ fillStyle: noteColor, strokeStyle: noteColor });
-    //   b.setContext(context).drawWithStyle();
-    // });
   }, [barsPerSystem, firstNextBar, paintBar]);
 
   const update = useCallback(() => {
@@ -327,17 +342,30 @@ function App() {
       let newFirstNextBar = prevFirstNextBar;
 
       if (regenerateOnFinish && leftBars === 1 && !prevFirstNextBar) {
-        newFirstNextBar = selectRandomBar();
+        if (useEndings) {
+          setPreselectedEnding(selectRandomEnding());
+          const ending = selectRandomEnding();
+          newFirstNextBar = ending[1];
+        } else {
+          newFirstNextBar = selectRandomBar();
+        }
       } else if (barIndex === 1) {
         newFirstNextBar = null;
       }
       return newFirstNextBar;
     });
-  }, [barCount, barIndex, regenerateOnFinish, selectRandomBar]);
+  }, [
+    barCount,
+    barIndex,
+    regenerateOnFinish,
+    selectRandomBar,
+    selectRandomEnding,
+    useEndings,
+  ]);
 
   useEffect(() => {
     if (regenerateOnFinish && barIndex === 0 && !isFirstBar) {
-      const newScore = new Array(barCount).fill(null).map(selectRandomBar);
+      const newScore = getRandomBars();
       if (firstNextBar !== null) {
         newScore[0] = firstNextBar;
       }
@@ -347,6 +375,7 @@ function App() {
     barCount,
     barIndex,
     firstNextBar,
+    getRandomBars,
     isFirstBar,
     regenerateOnFinish,
     selectRandomBar,
@@ -547,6 +576,26 @@ function App() {
                   className="ml-2 block text-sm text-gray-700"
                 >
                   Regenerar al finalizar
+                </label>
+              </div>
+              <div className="flex items-center">
+                <input
+                  id="add-endings"
+                  type="checkbox"
+                  checked={useEndings}
+                  onChange={(e) =>
+                    setConfig((prev) => ({
+                      ...prev,
+                      useEndings: e.target.checked,
+                    }))
+                  }
+                  className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                />
+                <label
+                  htmlFor="add-endings"
+                  className="ml-2 block text-sm text-gray-700"
+                >
+                  Agregar finales
                 </label>
               </div>
               <button
