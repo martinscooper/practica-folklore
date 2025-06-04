@@ -74,8 +74,8 @@ function App() {
 
   const defaultConfig = useMemo(
     () => ({
-      barCount: 8,
-      barsPerSystem: 4,
+      barCount: 4,
+      barsPerSystem: 2,
       tempo: 100,
       isMuted: false,
       regenerateOnFinish: false,
