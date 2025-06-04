@@ -99,7 +99,7 @@ function App() {
   const { barCount, barsPerSystem, tempo, isMuted, regenerateOnFinish } =
     config;
 
-  const { options, rest, triplet } = useOptions();
+  const { options, rest, triplet, g } = useOptions();
 
   const toggleMute = () => {
     setConfig((prev) => {
@@ -141,9 +141,12 @@ function App() {
       if (result.keys == rest) {
         result["type"] = "r";
       }
+      if (result.keys === g) {
+        result["type"] = "x";
+      }
       return result;
     },
-    [rest, triplet]
+    [g, rest, triplet]
   );
 
   const selectRandomBar = useCallback(() => {
@@ -199,10 +202,10 @@ function App() {
         stave = new Stave(x, y, barWidth);
       }
       stave.setContext(context).draw();
-
       let notes = barNotes.map((n) =>
         n === triplet ? triplet : new StaveNote(n)
       );
+
       let triplets = [];
       if (notes.includes(triplet)) {
         notes.forEach((n, i) => {
