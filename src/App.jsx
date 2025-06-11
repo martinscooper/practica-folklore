@@ -236,7 +236,6 @@ function App() {
       const isCurrent = i === barIndex;
       const noteColor = isCurrent || !playing ? "#000000" : "#696262";
       let stave = new Stave(x, y, barWidth);
-
       if (barIndexInSystem === 0) {
         if (i === 0) {
           if (drawTempo) {
@@ -312,8 +311,9 @@ function App() {
       contentWidth /
       Math.min(
         barsPerSystem,
-        Math.max(Object.values(parsedScore).map((bars) => bars.length))
+        Math.max(...Object.values(parsedScore).map((bars) => bars.length))
       );
+
     const systemHeight = 120;
     const startX = availableWidth * (scoreMarginPercentage / 2);
     const startY = 40;
