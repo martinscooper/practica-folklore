@@ -5,6 +5,8 @@ import VolumeUpIcon from "@mui/icons-material/VolumeUp";
 import VolumeOffIcon from "@mui/icons-material/VolumeOff";
 import { useOptions } from "./useOptions";
 import { useLocalStorage } from "@uidotdev/usehooks";
+import { formatChacareraOption } from "./utils";
+import useMedia from "use-media";
 
 const context = new (window.AudioContext || window.webkitAudioContext)();
 const masterGain = context.createGain();
@@ -72,10 +74,26 @@ function App() {
   const [isFirstBar, setIsFirstBar] = useState(false);
   const [preselectedEnding, setPreselectedEnding] = useState(null);
 
+  const isSm = useMedia({ minWidth: 640 });
+  const isMd = useMedia({ minWidth: 768 });
+  const isLg = useMedia({ minWidth: 1024 });
+  const isXl = useMedia({ minWidth: 1280 });
+  const is2Xl = useMedia({ minWidth: 1536 });
+
+  const barsPerSystem = useMemo(
+    () => (is2Xl ? 4 : isXl ? 4 : isLg ? 4 : isMd ? 2 : isSm ? 2 : 2),
+    [is2Xl, isLg, isMd, isSm, isXl]
+  );
+
+  const scoreMarginPercentage = useMemo(
+    () =>
+      is2Xl ? 0.25 : isXl ? 0.2 : isLg ? 0.15 : isMd ? 0.1 : isSm ? 0.1 : 0.05,
+    [is2Xl, isLg, isMd, isSm, isXl]
+  );
+
   const defaultConfig = useMemo(
     () => ({
       barCount: 4,
-      barsPerSystem: 2,
       tempo: 100,
       isMuted: false,
       regenerateOnFinish: false,
@@ -98,20 +116,13 @@ function App() {
     [config]
   );
 
-  const {
-    barCount,
-    barsPerSystem,
-    tempo,
-    isMuted,
-    regenerateOnFinish,
-    useEndings,
-  } = config;
+  const { barCount, tempo, isMuted, regenerateOnFinish, useEndings } = config;
 
-  const { options, endingOptions, rest, triplet, g } = useOptions();
+  const { options, endingOptions, rest, triplet, b, chacareras } = useOptions();
 
   const toggleMute = () => {
     setConfig((prev) => {
-      const newMutedState = !prev;
+      const newMutedState = !prev.isMuted;
       masterGain.gain.setValueAtTime(
         newMutedState ? 0 : 1,
         context.currentTime
@@ -134,11 +145,6 @@ function App() {
     [beatsPerBar, millisecondsPerBeat]
   );
 
-  // const totalMilliseconds = useMemo(
-  //   () => millisecondsPerBar * barCount,
-  //   [barCount, millisecondsPerBar]
-  // );
-
   const processNote = useCallback(
     (note) => {
       if (note === triplet) return triplet;
@@ -149,12 +155,25 @@ function App() {
       if (result.keys == rest) {
         result["type"] = "r";
       }
-      if (result.keys === g) {
+      if (result.keys === b) {
         result["type"] = "x";
       }
       return result;
     },
-    [g, rest, triplet]
+    [b, rest, triplet]
+  );
+
+  const selectSong = useCallback(
+    (song) =>
+      setScore(
+        Object.fromEntries(
+          Object.entries(song).map(([sectionName, sectionBars]) => [
+            sectionName,
+            sectionBars.map((bar) => bar.map((n) => processNote(n))),
+          ])
+        )
+      ),
+    [processNote]
   );
 
   const selectRandomBar = useCallback(() => {
@@ -171,6 +190,7 @@ function App() {
 
   const getRandomBars = useCallback(() => {
     let newScore = new Array(barCount).fill(null).map(selectRandomBar);
+
     if (useEndings) {
       const ending = selectRandomEnding();
       setPreselectedEnding(ending);
@@ -205,19 +225,19 @@ function App() {
       barWidth,
       systemHeight,
       i,
-      drawTempo
+      drawTempo,
+      sectionName,
+      systemIndex
     ) => {
-      const systemIndex = Math.floor(i / barsPerSystem);
       const barIndexInSystem = i % barsPerSystem;
 
       const x = startX + barIndexInSystem * barWidth;
       const y = startY + systemIndex * systemHeight;
       const isCurrent = i === barIndex;
       const noteColor = isCurrent || !playing ? "#000000" : "#696262";
+      let stave = new Stave(x, y, barWidth);
 
-      let stave;
       if (barIndexInSystem === 0) {
-        stave = new Stave(x, y, barWidth);
         if (i === 0) {
           if (drawTempo) {
             stave.setTempo(
@@ -226,13 +246,14 @@ function App() {
                 dots: 0,
                 bpm: tempo,
               },
-              -20
+              -35
             );
-            stave.addClef("treble").addTimeSignature("3/4");
+            stave.addTimeSignature("3/4");
+          }
+          if (sectionName) {
+            stave.setSection(sectionName, 0, 0, 15, false);
           }
         }
-      } else {
-        stave = new Stave(x, y, barWidth);
       }
       stave.setContext(context).draw();
       let notes = barNotes.map((n) =>
@@ -264,41 +285,74 @@ function App() {
     [barIndex, barsPerSystem, playing, tempo, triplet]
   );
 
+  const totalSystems = useMemo(() => {
+    if (Array.isArray(score)) {
+      return Math.ceil(score.length / barsPerSystem);
+    } else {
+      return Object.values(score)
+        .map((s) => Math.ceil(s.length / barsPerSystem))
+        .reduce((c, i) => c + i, 0);
+    }
+  }, [barsPerSystem, score]);
+
   const paint = useCallback(() => {
     if (!containerRef.current || score.length === 0 || !isConfigValid) return;
 
     containerRef.current.innerHTML = ""; // Clear previous rendering
-
     const renderer = new Renderer(containerRef.current, Renderer.Backends.SVG);
     const context = renderer.getContext();
 
-    // Calculate the desired system width as 80% of the viewport width
-    const systemWidth = containerRef.current.offsetWidth;
-    const barWidth = systemWidth / barsPerSystem;
-    const systemHeight = 140;
-    const startX = 10;
-    const startY = 40;
-
-    const totalSystems = Math.ceil(score.length / barsPerSystem);
-    const svgHeight = startY + totalSystems * systemHeight;
-    renderer.resize(systemWidth + startX * 2, svgHeight);
-    score.forEach((barNotes, i) => {
-      paintBar(
-        barNotes,
-        context,
-        startX,
-        startY,
-        barWidth,
-        systemHeight,
-        i,
-        true
+    const availableWidth = containerRef.current.offsetWidth;
+    const contentWidth = availableWidth * (1 - scoreMarginPercentage);
+    const parsedScore = Array.isArray(score) ? { "": score } : score;
+    // barWidth can potentially be have to be calculated by a value
+    // minor than barsPerSystem, in the case there are no sections with
+    // with number of bars equal or greater than barsPerSystem
+    const barWidth =
+      contentWidth /
+      Math.min(
+        barsPerSystem,
+        Math.max(Object.values(parsedScore).map((bars) => bars.length))
       );
-    });
-  }, [barsPerSystem, isConfigValid, paintBar, score]);
+    const systemHeight = 120;
+    const startX = availableWidth * (scoreMarginPercentage / 2);
+    const startY = 40;
+    const svgWidth = contentWidth + startX;
+    const svgHeight = startY * 2 + totalSystems * systemHeight;
+    renderer.resize(svgWidth, svgHeight);
+
+    Object.entries(parsedScore).forEach(
+      ([sectionName, sectionBars], sectionIndex) =>
+        sectionBars.forEach((barNotes, barIndex) =>
+          paintBar(
+            barNotes,
+            context,
+            startX,
+            startY,
+            barWidth,
+            systemHeight,
+            barIndex,
+            sectionIndex === 0,
+            sectionName,
+            Object.values(score)
+              .slice(0, sectionIndex)
+              .map((bars) => Math.floor(bars.length / barsPerSystem))
+              .reduce((sum, acc) => sum + acc, 0) +
+              Math.floor(barIndex / barsPerSystem)
+          )
+        )
+    );
+  }, [
+    barsPerSystem,
+    isConfigValid,
+    paintBar,
+    score,
+    scoreMarginPercentage,
+    totalSystems,
+  ]);
 
   const paintHint = useCallback(() => {
     if (!hintContainerRef.current || firstNextBar === null) return;
-
     hintContainerRef.current.innerHTML = ""; // Clear previous rendering
 
     const renderer = new Renderer(
@@ -308,15 +362,16 @@ function App() {
     const context = renderer.getContext();
 
     // Calculate the desired system width as 80% of the viewport width
-    const systemWidth = hintContainerRef.current.offsetWidth;
-    const barWidth = systemWidth / barsPerSystem;
+    const availableWidth = containerRef.current.offsetWidth;
+    const contentWidth = availableWidth * (1 - scoreMarginPercentage);
+    const barWidth = contentWidth / barsPerSystem;
     const systemHeight = 120;
-    const startX = 10;
-    const startY = 40;
-
+    const startX = 0; //availableWidth * (scoreMarginPercentage / 2);
+    const startY = 20;
     const totalSystems = 1;
-    const svgHeight = startY + totalSystems * systemHeight;
-    renderer.resize(systemWidth + startX * 2, svgHeight);
+    const svgWidth = contentWidth + startX;
+    const svgHeight = startY * 2 + totalSystems * systemHeight;
+    renderer.resize(svgWidth, svgHeight);
 
     paintBar(
       firstNextBar,
@@ -326,9 +381,11 @@ function App() {
       barWidth,
       systemHeight,
       0,
-      false
+      false,
+      "",
+      0
     );
-  }, [barsPerSystem, firstNextBar, paintBar]);
+  }, [barsPerSystem, firstNextBar, paintBar, scoreMarginPercentage]);
 
   const update = useCallback(() => {
     setBarIndex((prevBarIndex) => {
@@ -428,12 +485,11 @@ function App() {
   }, [beatsPerBar, millisecondsPerBeat, preCount, tempo]);
 
   return (
-    <div className="flex flex-col items-center mt-10 space-y-6">
-      <h1 className="text-3xl font-bold text-gray-800">
+    <div className="flex flex-col justify-center items-center mt-6 space-y-6 md:mt-10">
+      <h1 className="text-2xl font-bold text-gray-800 md:text-3xl">
         Ejercicio Rítmico Folklore
       </h1>
-
-      <div className="flex flex-wrap justify-center gap-4">
+      <div className="flex flex-wrap justify-center gap-2 md:gap-4">
         {!playing && (
           <button
             onClick={onStart}
@@ -468,7 +524,6 @@ function App() {
           </IconButton>
         )}
       </div>
-
       {playing && preCount > 0 && (
         <div className="flex items-center justify-center mt-4">
           <span className="text-lg font-medium text-gray-700 mr-2">
@@ -479,19 +534,15 @@ function App() {
           </span>
         </div>
       )}
-
-      <div
-        ref={containerRef}
-        className="mt-2 w-full max-w-7xl mx-auto px-4"
-      ></div>
+      <div ref={containerRef} className="mt-2 w-full mx-0"></div>
       {firstNextBar && barCount - barIndex === 1 && (
-        <section className="mt-6 w-full max-w-7xl px-4 mx-auto">
-          <h2 className="text-lg font-semibold text-gray-700">Siguiente:</h2>
+        <section className="mt-6 flex flex-col justify-center items-start gap-1">
+          <div className="text-lg font-semibold text-gray-700">Siguiente:</div>
           <div ref={hintContainerRef}></div>
         </section>
       )}
       {!playing && (
-        <div className="mt-8 w-full max-w-4xl px-4">
+        <div className="mt-8 w-full max-w-4xl px-2 md:px-4">
           <Accordion title="⚙️ Configuración">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               <div>
@@ -538,28 +589,7 @@ function App() {
                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
-              <div>
-                <label
-                  htmlFor="bars"
-                  className="block text-sm font-medium text-gray-700"
-                >
-                  Compases por sistema
-                </label>
-                <input
-                  type="number"
-                  id="bars-per-system"
-                  min="1"
-                  max="8"
-                  value={barsPerSystem}
-                  onChange={(e) =>
-                    setConfig((prev) => ({
-                      ...prev,
-                      barsPerSystem: Number(e.target.value) || null,
-                    }))
-                  }
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
+
               <div className="flex items-center">
                 <input
                   id="regenerate-on-finish"
@@ -607,6 +637,14 @@ function App() {
                 Resetear configuración
               </button>
             </div>
+          </Accordion>
+
+          <Accordion title="⚙️ Opciones chacarera">
+            {Object.keys(chacareras).map((k, i) => (
+              <button key={i} onClick={() => selectSong(chacareras[k])}>
+                {formatChacareraOption(k)}
+              </button>
+            ))}
           </Accordion>
         </div>
       )}
